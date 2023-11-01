@@ -7,7 +7,8 @@ from os import getenv
 SPOTIFY_CLIENT_ID = getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = getenv('SPOTIFY_CLIENT_SECRET')
 SPOTIFY_REDIRECT_URI = getenv('SPOTIFY_REDIRECT_URI', 'http://localhost:3000/callback')
-SPOTIFY_SCOPES = getenv('SPOTIFY_SCOPES', 'playlist-modify-public playlist-modify-private user-read-private user-read-email')
+DEFAULT_SCOPES = 'user-library-read user-read-playback-position'
+SPOTIFY_SCOPES = getenv('SPOTIFY_SCOPES', DEFAULT_SCOPES)
 
 # Spotify URLS
 SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize"
@@ -82,9 +83,18 @@ def callback():
     playlists_response = requests.get(playlist_api_endpoint, headers=authorization_header)
     playlist_data = json.loads(playlists_response.text)
 
+    # Get episodes data
+    episodes_api_endpoint = "{}/me/episodes".format(SPOTIFY_API_URL)
+    episodes_response = requests.get(episodes_api_endpoint, headers=authorization_header)
+    episodes_data = json.loads(episodes_response.text)
+
     # Combine profile and playlist data to display
-    display_arr = [profile_data] + playlist_data["items"]
-    return render_template("index.html", sorted_array=display_arr)
+    context = {
+        "profile": json.dumps(profile_data, indent=2),
+        "playlists": json.dumps(playlist_data, indent=2),
+        "episodes": json.dumps(episodes_data, indent=2),
+    }
+    return render_template("index.html", context=context)
 
 
 def main():

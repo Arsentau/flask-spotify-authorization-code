@@ -6,8 +6,25 @@
     <title>Spotify SDK POC</title>
 </head>
 <body>
-    {% for item in sorted_array%}
-        <p> {{ item }} </p>
-    {% endfor %}
+    <h2>Profile Data</h2>
+    <pre>
+        <code>
+            {{ context.profile }}
+        </code>
+    </pre>
+
+    <h2>Playlists Data</h2>
+    <pre>
+        <code>
+            {{ context.playlists }}
+        </code>
+    </pre>
+
+    <h2>Episodes Data</h2>
+    <pre>
+        <code>
+            {{ context.episodes }}
+        </code>
+    </pre>
 </body>
 </html>
