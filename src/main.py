@@ -3,6 +3,7 @@ import requests
 import json
 from uuid import uuid4 as uuid
 from os import getenv
+import base64
 
 SPOTIFY_CLIENT_ID = getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = getenv('SPOTIFY_CLIENT_SECRET')
@@ -25,7 +26,7 @@ SHOW_DIALOG_bool = True
 SHOW_DIALOG_str = str(SHOW_DIALOG_bool).lower()
 
 
-class CodeState:
+class AuthState:
     def __init__(self):
         self.code = ""
         self.access_token = ""
@@ -38,18 +39,24 @@ class CodeState:
 
     def get_code(self):
         return self.code
-    
+
+    def set_access_token(self, access_token):
+        self.access_token = access_token
+
+    def get_refresh_token(self):
+        return self.refresh_token
+
     def set_token_data(self, access_token, refresh_token, token_type, expires_in):
         self.access_token = access_token
         self.refresh_token = refresh_token
         self.token_type = token_type
         self.expires_in = expires_in
-    
+
     def get_token_data(self):
         return self.access_token, self.refresh_token, self.token_type, self.expires_in
 
 
-USER_CODE = CodeState()
+AUTH = AuthState()
 
 
 auth_query_parameters = {
@@ -72,14 +79,40 @@ def login():
     return redirect(redirect_url)
 
 
+@app.route("/refresh-token")
+def refresh():
+    next_url = request.args.get('next', '/')
+    refresh_token = AUTH.get_refresh_token()
+    payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+    }
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        "Authorization": "Basic " + base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
+    }
+    response = requests.post(
+        SPOTIFY_TOKEN_URL,
+        data=payload,
+        headers=headers
+    )
+    print(response.text)
+    if response.status_code != 200:
+        return redirect("/login")
+    response_data = json.loads(response.text)
+    access_token = response_data.get("access_token")
+    AUTH.set_access_token(access_token)
+    return redirect(next_url)
+
+
 @app.route("/callback")
 def callback():
     # Auth Step 4: Requests refresh and access tokens
     auth_token = request.args['code']
-    USER_CODE.set_code(auth_token)
+    AUTH.set_code(auth_token)
     code_payload = {
         "grant_type": "authorization_code",
-        "code": USER_CODE.get_code(),
+        "code": AUTH.get_code(),
         "redirect_uri": SPOTIFY_REDIRECT_URI,
         'client_id': SPOTIFY_CLIENT_ID,
         'client_secret': SPOTIFY_CLIENT_SECRET,
@@ -92,24 +125,29 @@ def callback():
     refresh_token = response_data.get("refresh_token")
     token_type = response_data.get("token_type")
     expires_in = response_data.get("expires_in")
-    USER_CODE.set_token_data(access_token, refresh_token, token_type, expires_in)
+
+    AUTH.set_token_data(access_token, refresh_token, token_type, expires_in)
     return redirect("/")
 
 
 @app.route("/")
 def index():
-    if USER_CODE.get_code() == "":
+    if AUTH.get_code() == "":
         return redirect("/login")
 
-    (access_token, refresh_token, token_type, expires_in) = USER_CODE.get_token_data()
+    (access_token, refresh_token, token_type, expires_in) = AUTH.get_token_data()
     # Auth Step 6: Use the access token to access Spotify API
     authorization_header = {"Authorization": "Bearer {}".format(access_token)}
 
     # Get profile data
     user_profile_api_endpoint = "{}/me".format(SPOTIFY_API_URL)
     profile_response = requests.get(user_profile_api_endpoint, headers=authorization_header)
+
+    # Here we check if the access token is expired, if so we should refresh it
+    if profile_response.status_code != 200:
+        return redirect("/refresh-token?next=/")
+
     profile_data = json.loads(profile_response.text)
-    print("profile_data: ", profile_data)
 
     # Get user playlist data
     playlist_api_endpoint = "{}/playlists".format(profile_data.get("href"))
