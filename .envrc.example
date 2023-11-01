@@ -1,0 +1,5 @@
+export SPOTIFY_CLIENT_ID=your_client_id
+export SPOTIFY_CLIENT_SECRET=your_client_secret
+export SPOTIFY_REDIRECT_URI=http://localhost:8080/callback
+export SPOTIFY_SCOPES=user-read-private user-read-email user-read-playback-state user-modify-playback-state
+```
