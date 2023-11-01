@@ -6,6 +6,8 @@ from os import getenv
 
 SPOTIFY_CLIENT_ID = getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = getenv('SPOTIFY_CLIENT_SECRET')
+SPOTIFY_REDIRECT_URI = getenv('SPOTIFY_REDIRECT_URI', 'http://localhost:3000/callback')
+SPOTIFY_SCOPES = getenv('SPOTIFY_SCOPES', 'playlist-modify-public playlist-modify-private user-read-private user-read-email')
 
 # Spotify URLS
 SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize"
@@ -17,8 +19,6 @@ SPOTIFY_API_URL = "{}/{}".format(SPOTIFY_API_BASE_URL, API_VERSION)
 # Server-side Parameters
 CLIENT_SIDE_URL = "http://localhost"
 PORT = 3000
-REDIRECT_URI = "{}:{}/callback".format(CLIENT_SIDE_URL, PORT)
-SCOPE = "playlist-modify-public playlist-modify-private user-read-private user-read-email"
 STATE = uuid()
 SHOW_DIALOG_bool = True
 SHOW_DIALOG_str = str(SHOW_DIALOG_bool).lower()
@@ -26,8 +26,8 @@ SHOW_DIALOG_str = str(SHOW_DIALOG_bool).lower()
 auth_query_parameters = {
     "client_id": SPOTIFY_CLIENT_ID,
     "response_type": "code",
-    "redirect_uri": REDIRECT_URI,
-    "scope": SCOPE,
+    "redirect_uri": SPOTIFY_REDIRECT_URI,
+    "scope": SPOTIFY_SCOPES,
     "state": STATE,
     "show_dialog": SHOW_DIALOG_str,
 }
@@ -50,7 +50,7 @@ def callback():
     code_payload = {
         "grant_type": "authorization_code",
         "code": auth_token,
-        "redirect_uri": REDIRECT_URI,
+        "redirect_uri": SPOTIFY_REDIRECT_URI,
         'client_id': SPOTIFY_CLIENT_ID,
         'client_secret': SPOTIFY_CLIENT_SECRET,
     }
