@@ -2,10 +2,11 @@ import base64
 import json
 from os import getenv
 from uuid import uuid4 as uuid
-from routes.routes import Routes, refresh_access_token
 
 import requests
 from flask import Flask, redirect, render_template, request
+
+from routes.routes import Routes, refresh_access_token
 
 SPOTIFY_CLIENT_ID = getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = getenv('SPOTIFY_CLIENT_SECRET')
