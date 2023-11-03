@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <h1>User's Saved Shows</h1>
+  <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+    {% for show in context.shows %}
+      <a href="{{ show.href }}" style="background-color: lightgray; border-radius: 10px; padding: 1rem; text-decoration: none;">
+        {{ show.name }}
+      </a>
+    {% endfor %}
+  </div>
+  <pre>
+    <code>
+      {{ context.saved_shows }}
+    </code>
+  </pre>
+{% endblock %}

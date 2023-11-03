@@ -1,13 +1,18 @@
-from flask import Flask, redirect, request, render_template
-import requests
-import json
-from uuid import uuid4 as uuid
-from os import getenv
 import base64
+import json
+from os import getenv
+from uuid import uuid4 as uuid
+from routes.routes import Routes, refresh_access_token
+
+import requests
+from flask import Flask, redirect, render_template, request
 
 SPOTIFY_CLIENT_ID = getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = getenv('SPOTIFY_CLIENT_SECRET')
-SPOTIFY_REDIRECT_URI = getenv('SPOTIFY_REDIRECT_URI', 'http://localhost:3000/callback')
+SPOTIFY_REDIRECT_URI = getenv(
+    'SPOTIFY_REDIRECT_URI',
+    'http://localhost:3000/callback'
+)
 DEFAULT_SCOPES = 'user-library-read user-read-playback-position'
 SPOTIFY_SCOPES = getenv('SPOTIFY_SCOPES', DEFAULT_SCOPES)
 
@@ -43,17 +48,26 @@ class AuthState:
     def set_access_token(self, access_token):
         self.access_token = access_token
 
+    def get_access_token(self):
+        return self.access_token
+
     def get_refresh_token(self):
         return self.refresh_token
 
-    def set_token_data(self, access_token, refresh_token, token_type, expires_in):
+    def set_token_data(
+        self,
+        access_token,
+        refresh_token,
+        token_type,
+        expires_in
+    ):
         self.access_token = access_token
         self.refresh_token = refresh_token
         self.token_type = token_type
         self.expires_in = expires_in
 
     def get_token_data(self):
-        return self.access_token, self.refresh_token, self.token_type, self.expires_in
+        return self.access_token, self.refresh_token
 
 
 AUTH = AuthState()
@@ -71,7 +85,7 @@ auth_query_parameters = {
 app = Flask(__name__)
 
 
-@app.route("/login")
+@app.route(Routes.login.value)
 def login():
     redirect_url = f"{SPOTIFY_AUTH_URL}?"
     for param, value in auth_query_parameters.items():
@@ -79,9 +93,9 @@ def login():
     return redirect(redirect_url)
 
 
-@app.route("/refresh-token")
+@app.route(Routes.refresh_token.value)
 def refresh():
-    next_url = request.args.get('next', '/')
+    next_url = request.args.get('next', Routes.home.value)
     refresh_token = AUTH.get_refresh_token()
     payload = {
         "grant_type": "refresh_token",
@@ -89,23 +103,26 @@ def refresh():
     }
     headers = {
         'Content-Type': 'application/x-www-form-urlencoded',
-        "Authorization": "Basic " + base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
+        "Authorization": "Basic " + base64.b64encode(
+            f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
+            .encode())
+        .decode()
     }
     response = requests.post(
         SPOTIFY_TOKEN_URL,
         data=payload,
         headers=headers
     )
-    print(response.text)
+
     if response.status_code != 200:
-        return redirect("/login")
+        return redirect(Routes.login.value)
     response_data = json.loads(response.text)
     access_token = response_data.get("access_token")
     AUTH.set_access_token(access_token)
     return redirect(next_url)
 
 
-@app.route("/callback")
+@app.route(Routes.callback.value)
 def callback():
     # Auth Step 4: Requests refresh and access tokens
     auth_token = request.args['code']
@@ -127,36 +144,45 @@ def callback():
     expires_in = response_data.get("expires_in")
 
     AUTH.set_token_data(access_token, refresh_token, token_type, expires_in)
-    return redirect("/")
+    return redirect(Routes.home.value)
 
 
-@app.route("/")
+@app.route(Routes.home.value)
 def index():
     if AUTH.get_code() == "":
-        return redirect("/login")
+        return redirect(Routes.login.value)
 
-    (access_token, refresh_token, token_type, expires_in) = AUTH.get_token_data()
+    access_token = AUTH.get_access_token()
     # Auth Step 6: Use the access token to access Spotify API
     authorization_header = {"Authorization": "Bearer {}".format(access_token)}
 
     # Get profile data
     user_profile_api_endpoint = "{}/me".format(SPOTIFY_API_URL)
-    profile_response = requests.get(user_profile_api_endpoint, headers=authorization_header)
+    profile_response = requests.get(
+        user_profile_api_endpoint,
+        headers=authorization_header
+    )
 
     # Here we check if the access token is expired, if so we should refresh it
-    if profile_response.status_code != 200:
-        return redirect("/refresh-token?next=/")
+    refresh_access_token(profile_response.status_code, Routes.home.value)
 
     profile_data = json.loads(profile_response.text)
 
     # Get user playlist data
     playlist_api_endpoint = "{}/playlists".format(profile_data.get("href"))
-    playlists_response = requests.get(playlist_api_endpoint, headers=authorization_header)
+    playlists_response = requests.get(
+        playlist_api_endpoint,
+        headers=authorization_header
+    )
+
     playlist_data = json.loads(playlists_response.text)
 
     # Get episodes data
     episodes_api_endpoint = "{}/me/episodes".format(SPOTIFY_API_URL)
-    episodes_response = requests.get(episodes_api_endpoint, headers=authorization_header)
+    episodes_response = requests.get(
+        episodes_api_endpoint,
+        headers=authorization_header
+    )
     episodes_data = json.loads(episodes_response.text)
 
     # Combine profile and playlist data to display
@@ -167,6 +193,73 @@ def index():
     }
     return render_template("index.html", context=context)
 
+
+@app.route(Routes.saved_shows.value)
+def get_saved_shows():
+    if AUTH.get_code() == "":
+        return redirect(Routes.login.value)
+
+    access_token = AUTH.get_access_token()
+    # Auth Step 6: Use the access token to access Spotify API
+    authorization_header = {"Authorization": "Bearer {}".format(access_token)}
+
+    # Get episodes data
+    episodes_api_endpoint = "{}/me/shows".format(SPOTIFY_API_URL)
+    episodes_response = requests.get(
+        episodes_api_endpoint,
+        headers=authorization_header
+    )
+    refresh_access_token(
+        episodes_response.status_code,
+        Routes.saved_shows.value
+    )
+    episodes_data = json.loads(episodes_response.text)
+    shows = [show['show'] for show in episodes_data['items']]
+    shows_links = []
+    for show in shows:
+        href = Routes.show_episodes.value.replace(
+            '<show_id>',
+            show['id']
+        )
+        shows_links.append({'name': show['name'], 'href': href})
+
+    # Combine profile and playlist data to display
+    context = {
+        "saved_shows": json.dumps(episodes_data, indent=2),
+        "shows": shows_links,
+    }
+    return render_template("saved-shows.html", context=context)
+
+
+@app.route(Routes.show_episodes.value)
+def get_show_episodes(show_id):
+    if AUTH.get_code() == "":
+        return redirect(Routes.login.value)
+
+    access_token = AUTH.get_access_token()
+    # Auth Step 6: Use the access token to access Spotify API
+    authorization_header = {"Authorization": "Bearer {}".format(access_token)}
+
+    # Get episodes data
+    episodes_api_endpoint = "{}/shows/{}/episodes".format(
+        SPOTIFY_API_URL,
+        show_id
+    )
+    episodes_response = requests.get(
+        episodes_api_endpoint,
+        headers=authorization_header
+    )
+    refresh_access_token(
+        episodes_response.status_code,
+        Routes.show_episodes.value
+    )
+    episodes_data = json.loads(episodes_response.text)
+
+    # Combine profile and playlist data to display
+    context = {
+        "episodes": json.dumps(episodes_data, indent=2),
+    }
+    return render_template("show-episodes.html", context=context)
 
 def main():
     app.run(port=3000, debug=True)
